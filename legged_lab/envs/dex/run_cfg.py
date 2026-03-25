@@ -70,7 +70,7 @@ class DexEventCfg(EventCfg):
 
 @configclass
 class DexRewardCfg:
-    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=4.0, params={"std": 0.5})  # 2.5 -> 4.0 增强
+    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=5.0, params={"std": 0.5})  # 2.5 -> 4.0 增强
     track_ang_vel_z_exp = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=2.0, params={"std": 0.5})  # 2.5 -> 2.0 略降
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -181,6 +181,60 @@ class DexRewardCfg:
     hip_yaw_action = RewTerm(func=mdp.hip_yaw_action, weight=-0.3)  # -1.0 -> -0.3
     feet_y_distance = RewTerm(func=mdp.feet_y_distance, weight=-0.5)  # -2.0 -> -0.5
 
+    # ============================================
+    # 新跑步专用奖励函数 (Running-specific rewards)
+    # ============================================
+    # 双脚交替接触奖励 - 鼓励自然的跑步步态
+    feet_contact_alternation = RewTerm(
+        func=mdp.feet_contact_alternation,
+        weight=2.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=["ankle_roll.*"])}
+    )
+
+    # 悬空时间奖励 - 跑步需要更多空中时间
+    feet_air_time_reward = RewTerm(
+        func=mdp.feet_air_time_reward,
+        weight=2.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_sensor", body_names=["ankle_roll.*"]),
+            "target_time": 0.35
+        }
+    )
+
+    # 抬脚高度奖励 - 防止拖地，鼓励高抬腿
+    feet_clearance = RewTerm(
+        func=mdp.feet_clearance,
+        weight=1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["ankle_roll.*"]),
+            "sensor_cfg": SceneEntityCfg("contact_sensor", body_names=["ankle_roll.*"]),
+            "min_height": 0.08
+        }
+    )
+
+    # 步频奖励 - 鼓励适当的高步频
+    step_frequency_reward = RewTerm(
+        func=mdp.step_frequency_reward,
+        weight=1.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_sensor", body_names=["ankle_roll.*"]),
+            "target_freq": 3.0
+        }
+    )
+
+    # 前向速度额外奖励 - 鼓励突破基础速度
+    forward_velocity_reward = RewTerm(
+        func=mdp.forward_velocity_reward,
+        weight=1.5
+    )
+
+    # 双脚接触力平衡 - 惩罚不对称步态
+    feet_contact_forces_balanced = RewTerm(
+        func=mdp.feet_contact_forces_balanced,
+        weight=-0.3,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=["ankle_roll.*"])}
+    )
+
 
 @configclass
 class DexRunFlatEnvCfg:
@@ -237,7 +291,7 @@ class DexRunFlatEnvCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=CommandRangesCfg(
-            lin_vel_x=(-0.6, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.57, 1.57), heading=(-math.pi, math.pi)
+            lin_vel_x=(-0.6, 2.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.57, 1.57), heading=(-math.pi, math.pi)
         ),
     )
     noise: NoiseCfg = NoiseCfg(
@@ -363,7 +417,7 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.005,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-3,
+        learning_rate=5e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,

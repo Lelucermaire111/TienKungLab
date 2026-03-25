@@ -849,4 +849,126 @@ class MujocoRunner:
 
 ---
 
+## 15. Reward 计算机制与日志解读
+
+### 15.1 Reward 计算流程
+
+Isaac Lab 的 `RewardManager` 采用**时序积分 + Episode 归一化**机制：
+
+```
+Step 计算 (每 RL 步):
+  value = reward_func() × weight × dt
+        = 原始奖励 × 权重 × 0.02秒
+
+Episode 累计 (每步累加):
+  _episode_sums += value
+  累计 1000 步 ≈ 原始奖励 × 权重 × 20秒
+
+Reset 时返回 (日志显示值):
+  logged_value = mean(_episode_sums) / max_episode_length_s
+               = 原始奖励 × weight
+```
+
+**关键结论**：TensorBoard 中显示的 `Episode/track_lin_vel_xy_exp` 值 = **原始奖励 × weight**，单位是**每秒平均奖励**。
+
+### 15.2 track_lin_vel_xy_exp 详解
+
+**计算公式**（`legged_lab/mdp/rewards.py:70-78`）：
+```python
+def track_lin_vel_xy_yaw_frame_exp(env, std=0.5):
+    # 在偏航坐标系中计算速度误差
+    vel_yaw = quat_rotate_inverse(yaw_quat(root_quat_w), root_lin_vel_w)
+    error = sum((command[:, :2] - vel_yaw[:, :2])^2)
+    return exp(-error / std^2)   # weight = 5.0
+```
+
+**解读日志值**：
+
+| 日志显示值 | 原始奖励 | 速度误差 | 评估 |
+|-----------|---------|---------|------|
+| 4.5-5.0 | 0.9-1.0 | <0.25 m/s | ✅ 优秀 |
+| 3.5-4.5 | 0.7-0.9 | 0.25-0.4 m/s | ✅ 良好 |
+| 2.0-3.5 | 0.4-0.7 | 0.4-0.6 m/s | ⚠️ 一般 |
+| <2.0 | <0.4 | >0.6 m/s | ❌ 需优化 |
+
+**为什么能超过 1？** 因为最终值 = 原始奖励(0-1) × weight(5.0)，理论范围是 **0-5**。
+
+### 15.3 新旧跑步奖励函数对比
+
+| 维度 | 旧版步态时钟奖励 | 新版无时钟奖励 |
+|------|-----------------|---------------|
+| **核心机制** | 强制匹配预设相位 | 基于物理接触自然涌现 |
+| **代表函数** | `gait_feet_frc_perio` | `feet_contact_alternation` |
+| **优点** | 收敛快，步态规整 | 泛化性强，适应速度变化 |
+| **缺点** | 频率固定，难以变速 | 初期学习更困难 |
+| **适用任务** | Walk（固定速度） | Run（变速需求） |
+
+**推荐配置**（`run_cfg.py` 已添加）：
+```python
+# 双脚交替接触奖励（替代 gait_feet_frc_perio）
+feet_contact_alternation = RewTerm(..., weight=2.0)
+
+# 悬空时间奖励（跑步需要更多空中时间）
+feet_air_time_reward = RewTerm(..., weight=2.0, params={"target_time": 0.35})
+
+# 前向速度额外奖励（鼓励突破基础速度）
+forward_velocity_reward = RewTerm(..., weight=1.5)
+
+# 步频奖励（适应高速步频）
+step_frequency_reward = RewTerm(..., weight=1.0, params={"target_freq": 3.0})
+```
+
+### 15.4 关键训练指标解读
+
+**速度相关**：
+```
+Episode/track_lin_vel_xy_exp:   速度追踪奖励（0-5，目标>4）
+Episode/forward_velocity_reward: 前向速度额外奖励（目标>1）
+Episode/step_frequency_reward:   步频奖励（目标>0.8）
+```
+
+**稳定性相关**：
+```
+Train/mean_episode_length:      平均存活步数（目标>800，最大1000）
+Episode/alive_reward:           存活奖励（目标>0.5）
+Episode/termination_penalty:    终止惩罚（目标趋近于0）
+```
+
+**AMP 相关**：
+```
+Loss/amp:                       判别器损失（先降后升是正常的）
+Loss/amp_policy_pred:           策略数据判别器输出（应趋近于0）
+Loss/amp_expert_pred:           专家数据判别器输出（应趋近于1）
+```
+
+**策略探索性**：
+```
+Policy/mean_noise_std:          动作噪声标准差（初始1.0，后期0.1-0.3）
+Loss/entropy:                   策略熵（总和，23维，健康范围5-10）
+```
+
+### 15.5 常见问题诊断
+
+**问题 1：track_lin_vel_xy_exp 高但实际速度慢**
+- 原因：只在低速命令下表现好
+- 检查：`ranges.lin_vel_x` 是否包含高速（>2.0 m/s）
+- 解决：提升速度命令上限，检查命令分布
+
+**问题 2：amp_loss 先降后升**
+- 诊断：✅ **正常现象**
+- 原因：15K 迭代后策略开始成功模仿专家，判别器难以区分
+- 关注：`amp_policy_pred` 应从 -1 上升到接近 0
+
+**问题 3：mean_episode_length 低（<500）**
+- 原因：策略不稳定，频繁摔倒
+- 检查：`termination_penalty` 是否过大（当前 -20.0 可尝试 -10.0）
+- 检查：新添加的跑步奖励权重是否过高导致动作激进
+
+**问题 4：entropy 不降（>15 经过 20K 迭代）**
+- 原因：策略学不到确定性动作
+- 检查：奖励信号是否太弱，或任务难度过高
+- 解决：提升 `track_lin_vel_xy_exp` 权重或降低 `std`
+
+---
+
 *文档基于代码版本：TienKung-Lab-dev（2025-2026），RSL-RL fork v2.3.1*

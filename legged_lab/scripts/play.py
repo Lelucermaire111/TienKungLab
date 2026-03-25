@@ -18,6 +18,7 @@
 
 import argparse
 import os
+import time  # 添加时间模块用于速度统计
 
 import torch
 from isaaclab.app import AppLauncher
@@ -66,13 +67,14 @@ def play():
     
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.events = None
-    env_cfg.scene.max_episode_length_s = 40.0
+    env_cfg.scene.max_episode_length_s = 1000.0  # 设置为很大的值以测试长期稳定性
     env_cfg.scene.num_envs = 50
     env_cfg.scene.env_spacing = 2.5
     env_cfg.commands.rel_standing_envs = 0.0
-    env_cfg.commands.ranges.lin_vel_x = (0.0, 1.0)
-    env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)
-    env_cfg.commands.ranges.ang_vel_z = (0.0, 0.0)
+    # 固定前向速度为 3.0 m/s，用于测试高速稳定奔跑能力
+    env_cfg.commands.ranges.lin_vel_x = (3.5, 3.5)  # 固定 3.5 m/s
+    env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)   # 固定 0，直线奔跑
+    env_cfg.commands.ranges.ang_vel_z = (0.0, 0.0)   # 固定 0，不转向
     env_cfg.scene.height_scanner.drift_range = (0.0, 0.0)
 
     env_cfg.scene.terrain_generator = None
@@ -118,11 +120,93 @@ def play():
 
     obs, _ = env.get_observations()
 
+    # ===== 速度监测与稳定时间统计初始化 =====
+    print("[INFO] 速度监测已启用 - 目标速度: 3.0 m/s")
+    print("[INFO] 稳定奔跑判定: 未倒地即可")
+    start_time = time.time()
+    all_speeds = []
+    all_errors = []
+    step_counter = 0
+
+    # 稳定时间跟踪 - 仅以未倒地作为判定条件
+    target_speed = 3.5
+    # 每个环境的稳定步数计数
+    stable_steps = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
+    # 记录每个环境的最大稳定时间
+    max_stable_steps = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
+    # 记录每个环境是否当前处于稳定状态
+    is_stable = torch.ones(env.num_envs, device=env.device, dtype=torch.bool)
+    # ==========================================
+
     while simulation_app.is_running():
 
         with torch.inference_mode():
             actions = policy(obs)
-            obs, _, _, _ = env.step(actions)
+            obs, _, terminated, _ = env.step(actions)
+
+            # ===== 速度与稳定时间统计 =====
+            step_counter += 1
+            # 获取实际速度（机身坐标系）
+            actual_vel = env.robot.data.root_lin_vel_b
+            target_vel = env.command_generator.command
+
+            # 计算前向速度误差（只考虑 x 方向）- 仅用于统计，不用于稳定判定
+            forward_speed_error = torch.abs(target_vel[:, 0] - actual_vel[:, 0])
+            # 判断当前步是否稳定: 仅以未倒地作为判定条件
+            current_stable = ~terminated
+
+            # 更新稳定步数统计
+            # 如果当前稳定，增加计数；否则重置为0
+            stable_steps = torch.where(current_stable, stable_steps + 1, torch.zeros_like(stable_steps))
+            # 更新最大稳定步数
+            max_stable_steps = torch.maximum(max_stable_steps, stable_steps)
+            # 记录是否处于稳定状态
+            is_stable = current_stable
+
+            # 计算统计信息
+            speed_2d = actual_vel[:, 0].mean().item()  # 前向速度平均值
+            avg_error = forward_speed_error.mean().item()
+            num_stable = current_stable.sum().item()
+
+            all_speeds.append(speed_2d)
+            all_errors.append(avg_error)
+
+            # 每2秒输出一次统计
+            if time.time() - start_time > 2.0:
+                avg_speed = sum(all_speeds) / len(all_speeds)
+                avg_err = sum(all_errors) / len(all_errors)
+                max_forward_speed = max(all_speeds)
+                min_forward_speed = min(all_speeds)
+
+                # 计算当前最稳定的环境
+                best_env = max_stable_steps.argmax().item()
+                best_stable_steps = max_stable_steps[best_env].item()
+                best_stable_time = best_stable_steps * env.step_dt
+                current_best_time = stable_steps[best_env].item() * env.step_dt
+
+                # 存活环境数量
+                num_alive = current_stable.sum().item()
+
+                print(f"\n{'='*60}")
+                print(f"[Velocity Stats] 统计周期: {len(all_speeds)} 步 | 总步数: {step_counter}")
+                print(f"  目标速度: {target_speed:.1f} m/s")
+                print(f"  存活环境: {num_alive}/{env.num_envs}")
+                if num_alive > 0:
+                    alive_avg_speed = actual_vel[current_stable, 0].mean().item()
+                    alive_max_speed = actual_vel[current_stable, 0].max().item()
+                    alive_min_speed = actual_vel[current_stable, 0].min().item()
+                    print(f"  存活环境速度: 平均={alive_avg_speed:.3f} | 最大={alive_max_speed:.3f} | 最小={alive_min_speed:.3f} m/s")
+                print(f"  总体速度: 平均={avg_speed:.3f} | 最大={max_forward_speed:.3f} | 最小={min_forward_speed:.3f} m/s")
+                print(f"  跟踪误差: {avg_err:.3f} m/s")
+                print(f"\n[Stable Run Stats]")
+                print(f"  全局最大稳定时间: {(max_stable_steps.max().item() * env.step_dt):.2f}s")
+                print(f"  最佳环境 (Env {best_env}): 当前={current_best_time:.2f}s | 历史最大={best_stable_time:.2f}s")
+
+                # 重置统计
+                all_speeds = []
+                all_errors = []
+                start_time = time.time()
+            # ==============================
 
 
 if __name__ == "__main__":
