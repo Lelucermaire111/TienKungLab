@@ -72,9 +72,9 @@ def play():
     env_cfg.scene.env_spacing = 2.5
     env_cfg.commands.rel_standing_envs = 0.0
     # 固定前向速度为 3.0 m/s，用于测试高速稳定奔跑能力
-    env_cfg.commands.ranges.lin_vel_x = (3.5, 3.5)  # 固定 3.5 m/s
-    env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)   # 固定 0，直线奔跑
-    env_cfg.commands.ranges.ang_vel_z = (0.0, 0.0)   # 固定 0，不转向
+    env_cfg.commands.ranges.lin_vel_x = (0.0, 3.5)  
+    env_cfg.commands.ranges.lin_vel_y = (0.0, 0.5)   # 固定 0，直线奔跑
+    env_cfg.commands.ranges.ang_vel_z = (0.0, 0.5)   # 固定 0，不转向
     env_cfg.scene.height_scanner.drift_range = (0.0, 0.0)
 
     env_cfg.scene.terrain_generator = None
