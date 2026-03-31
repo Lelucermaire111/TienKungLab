@@ -36,6 +36,7 @@ from legged_lab.envs.tienkung.walk_with_sensor_cfg import (
 
 from legged_lab.envs.dex.dex_env import DexEnv
 from legged_lab.envs.dex.run_cfg import DexRunAgentCfg, DexRunFlatEnvCfg
+from legged_lab.envs.dex.run_optimized_cfg import DexRunOptimizedAgentCfg, DexRunFlatEnvCfg as DexRunOptimizedEnvCfg
 from legged_lab.envs.dex.walk_cfg import DexWalkAgentCfg, DexWalkFlatEnvCfg
 
 from legged_lab.utils.task_registry import task_registry
@@ -51,3 +52,4 @@ task_registry.register("lite_run", TienKungEnv, TienKungRunFlatEnvCfg, TienKungR
 # )
 task_registry.register("dex_walk", DexEnv, DexWalkFlatEnvCfg, DexWalkAgentCfg)
 task_registry.register("dex_run", DexEnv, DexRunFlatEnvCfg, DexRunAgentCfg)
+task_registry.register("dex_run_optimized", DexEnv, DexRunOptimizedEnvCfg, DexRunOptimizedAgentCfg)

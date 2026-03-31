@@ -16,6 +16,16 @@
 # with additional modifications by the TienKung-Lab Project,
 # and is distributed under the BSD-3-Clause license.
 
+"""Optimized running configuration with advanced neural architecture.
+
+This config uses RunningOptimizedActorCritic which includes:
+- Fourier feature embeddings for periodic gait capture
+- LayerNorm for training stability
+- PopArt adaptive value normalization
+- Residual connections for deeper networks
+- Orthogonal initialization throughout
+"""
+
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -62,7 +72,7 @@ class GaitCfg:
 @configclass
 class DexEventCfg(EventCfg):
     """TienKung 环境的事件配置"""
-    
+
     # 继承所有父类属性，并添加新的
     randomize_pd_gains: EventTerm = None
     randomize_apply_external_force_torque:EventTerm = None
@@ -70,14 +80,14 @@ class DexEventCfg(EventCfg):
 
 @configclass
 class DexRewardCfg:
-    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=2.5, params={"std": 0.5})  # 2.5 -> 4.0 增强
-    track_ang_vel_z_exp = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=2.5, params={"std": 0.5})  # 2.5 -> 2.0 略降
+    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=4.0, params={"std": 0.5})  # 2.5 -> 4.0 增强
+    track_ang_vel_z_exp = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=2.0, params={"std": 0.5})  # 2.5 -> 2.0 略降
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    torso_ang_vel_xy_l2 = RewTerm(func=mdp.body_ang_vel_xy_l2, 
+    torso_ang_vel_xy_l2 = RewTerm(func=mdp.body_ang_vel_xy_l2,
                                   params={"asset_cfg": SceneEntityCfg("robot", body_names="waist_pitch_link")},
                                   weight=-0.5)
-    torso_ang_acc_xy_l2 = RewTerm(func=mdp.body_ang_acc_xy_l2, 
+    torso_ang_acc_xy_l2 = RewTerm(func=mdp.body_ang_acc_xy_l2,
                                   params={"asset_cfg": SceneEntityCfg("robot", body_names="waist_pitch_link")},
                                   weight=-1e-4)
     energy = RewTerm(func=mdp.energy, weight=-1e-3)
@@ -150,7 +160,7 @@ class DexRewardCfg:
         weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["shoulder_roll_.*_joint", "shoulder_yaw_.*_joint"])},
     )
-    joint_deviation_waist = RewTerm(    
+    joint_deviation_waist = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"])},
@@ -328,9 +338,9 @@ class DexRunFlatEnvCfg:
                 params={
                     "asset_cfg": SceneEntityCfg("robot", body_names=["pelvis", "waist_yaw_link"]),
                     "com_range": {
-                    "x": (-0.05, 0.05),  
-                    "y": (-0.05, 0.05),  
-                    "z": (0.0, 0.0),  
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "z": (0.0, 0.0),
                     },
                 },
             )
@@ -341,20 +351,34 @@ class DexRunFlatEnvCfg:
 
 
 @configclass
-class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
+class DexRunOptimizedAgentCfg(RslRlOnPolicyRunnerCfg):
+    """Optimized agent configuration with advanced neural architecture."""
+
     seed = 42
     device = "cuda:0"
     num_steps_per_env = 24
     max_iterations = 50000
     empirical_normalization = False
+
+    # Optimized policy with advanced architecture features
     policy = RslRlPpoActorCriticCfg(
-        class_name="ActorCritic",
+        class_name="RunningOptimizedActorCritic",
         init_noise_std=1.0,
         noise_std_type="scalar",
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
+        # Fourier feature embedding for periodic gait capture
+        use_fourier_features=True,
+        fourier_embed_dim=64,
+        fourier_num_freqs=16,
+        # PopArt adaptive value normalization
+        use_popart=True,
+        # Residual connections for deeper network training
+        use_residual=True,
+        residual_dropout=0.0,
     )
+
     algorithm = RslRlPpoAlgorithmCfg(
         class_name="AMPPPO",
         value_loss_coef=1.0,
@@ -373,7 +397,7 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
         symmetry_cfg = RslRlSymmetryCfg(
             use_data_augmentation=False,
             use_mirror_loss=True,
-            mirror_loss_coeff=50.0,  
+            mirror_loss_coeff=50.0,
             data_augmentation_func=mdp.data_augmentation_func_g1,
         ),
         rnd_cfg=None,  # RslRlRndCfg()
@@ -381,11 +405,11 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
     clip_actions = None
     save_interval = 100
     runner_class_name = "AmpOnPolicyRunner"
-    experiment_name = "run"
+    experiment_name = "run_optimized"
     run_name = ""
     logger = "tensorboard"
-    neptune_project = "run"
-    wandb_project = "run"
+    neptune_project = "run_optimized"
+    wandb_project = "run_optimized"
     resume = False
     load_run = ".*"
     load_checkpoint = "model_.*.pt"

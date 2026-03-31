@@ -70,7 +70,7 @@ def play():
     env_cfg.scene.num_envs = 50
     env_cfg.scene.env_spacing = 2.5
     env_cfg.commands.rel_standing_envs = 0.0
-    env_cfg.commands.ranges.lin_vel_x = (0.0, 1.0)
+    env_cfg.commands.ranges.lin_vel_x = (0.0, 2.0)
     env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)
     env_cfg.commands.ranges.ang_vel_z = (0.0, 0.0)
     env_cfg.scene.height_scanner.drift_range = (0.0, 0.0)
