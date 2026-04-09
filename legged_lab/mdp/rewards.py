@@ -93,6 +93,13 @@ def lin_vel_z_l2(env: BaseEnv | DexEnv, asset_cfg: SceneEntityCfg = SceneEntityC
     return vel_z.clamp(max=25.0)
 
 
+def lin_vel_y_l2(env: BaseEnv | DexEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    vel_y = torch.square(asset.data.root_lin_vel_b[:, 1])
+    vel_y = torch.nan_to_num(vel_y, nan=0.0, posinf=0.0, neginf=0.0)
+    return vel_y.clamp(max=25.0)
+
+
 def ang_vel_xy_l2(env: BaseEnv | DexEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     ang_xy = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
