@@ -58,6 +58,8 @@ class AMPPPO:
         desired_kl=0.01,
         device="cpu",
         normalize_advantage_per_mini_batch=False,
+        entropy_coef_final=None,
+        clip_param_final=None,
         # RND parameters
         rnd_cfg: dict | None = None,
         # Symmetry parameters
@@ -146,6 +148,14 @@ class AMPPPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
+        self.entropy_coef_initial = entropy_coef
+        self.entropy_coef_final = entropy_coef_final if entropy_coef_final is not None else entropy_coef
+        self.clip_param_initial = clip_param
+        self.clip_param_final = clip_param_final if clip_param_final is not None else clip_param
+        self.training_progress = 0.0
+
+    def set_training_progress(self, progress: float):
+        self.training_progress = float(progress)
 
     def init_storage(
         self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape
@@ -354,18 +364,23 @@ class AMPPPO:
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
 
+            # ---- Scheduled coefficients ----
+            progress = self.training_progress
+            current_entropy_coef = self.entropy_coef_final + (self.entropy_coef_initial - self.entropy_coef_final) * max(0.0, 1.0 - progress)
+            current_clip_param = self.clip_param_final + (self.clip_param_initial - self.clip_param_final) * max(0.0, 1.0 - progress)
+
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
             surrogate = -torch.squeeze(advantages_batch) * ratio
             surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
-                ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+                ratio, 1.0 - current_clip_param, 1.0 + current_clip_param
             )
             surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
             # Value function loss
             if self.use_clipped_value_loss:
                 value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(
-                    -self.clip_param, self.clip_param
+                    -current_clip_param, current_clip_param
                 )
                 value_losses = (value_batch - returns_batch).pow(2)
                 value_losses_clipped = (value_clipped - returns_batch).pow(2)
@@ -373,7 +388,7 @@ class AMPPPO:
             else:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
 
-            loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+            loss = surrogate_loss + self.value_loss_coef * value_loss - current_entropy_coef * entropy_batch.mean()
 
             # Symmetry loss
             if self.symmetry:

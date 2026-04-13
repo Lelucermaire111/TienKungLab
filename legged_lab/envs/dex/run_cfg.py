@@ -82,12 +82,12 @@ class DexRewardCfg:
     torso_ang_acc_xy_l2 = RewTerm(func=mdp.body_ang_acc_xy_l2, 
                                   params={"asset_cfg": SceneEntityCfg("robot", body_names="waist_pitch_link")},
                                   weight=-1e-4)
-    energy = RewTerm(func=mdp.energy, weight=-1e-3)
+    energy = RewTerm(func=mdp.energy, weight=-4e-3)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-5e-7)  # 2.5e-7
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.015) # -0.01
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-0.5,  # -1.0 -> -0.5 降低
+        weight=-1.0,  # -1.0 -> -0.5 降低
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_sensor", body_names=["knee_pitch.*", "shoulder_roll.*", "elbow_pitch.*", "pelvis"]
@@ -99,7 +99,7 @@ class DexRewardCfg:
         func=mdp.body_orientation_l2, params={"asset_cfg": SceneEntityCfg("robot", body_names="pelvis")}, weight=-0.2  # -0.5 -> -0.25
     )
     waist_orientation_l2 = RewTerm(
-        func=mdp.body_orientation_l2, params={"asset_cfg": SceneEntityCfg("robot", body_names="waist_pitch_link")}, weight=-2.5 # -5.0 -> -2.5
+        func=mdp.body_orientation_l2, params={"asset_cfg": SceneEntityCfg("robot", body_names="waist_pitch_link")}, weight=-5.0 # -5.0 -> -2.5
     )
     fly = RewTerm(
         func=mdp.fly,
@@ -119,11 +119,19 @@ class DexRewardCfg:
     )
     feet_force = RewTerm(
         func=mdp.body_force,
-        weight=-3e-3,
+        weight=-0.015,
         params={
             "sensor_cfg": SceneEntityCfg("contact_sensor", body_names="ankle_roll.*"),
             "threshold": 500,
             "max_reward": 400,
+        },
+    )
+    feet_impact = RewTerm(
+        func=mdp.body_force_l2,
+        weight=-5e-6,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_sensor", body_names="ankle_roll.*"),
+            "threshold": 250,
         },
     )
     feet_too_near = RewTerm(
@@ -154,12 +162,22 @@ class DexRewardCfg:
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.15,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["shoulder_roll_.*_joint", "shoulder_yaw_.*_joint"])},
+        weight=-0.4,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["shoulder_roll_.*_joint", "shoulder_yaw_.*_joint", "elbow_pitch_.*_joint"])},
     )
-    joint_deviation_waist = RewTerm(    
+    joint_deviation_elbow = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.3,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["elbow_pitch_.*_joint"])},
+    )
+    joint_deviation_waist = RewTerm(
+        func=mdp.waist_joint_deviation_l1,
+        weight=1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"])},
+    )
+    waist_joint_velocity = RewTerm(
+        func=mdp.waist_joint_velocity_l1,
+        weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"])},
     )
     joint_deviation_legs = RewTerm(
@@ -184,6 +202,8 @@ class DexRewardCfg:
 
     ankle_torque = RewTerm(func=mdp.ankle_torque, weight=-0.0005)
     ankle_action = RewTerm(func=mdp.ankle_action, weight=-0.001)
+    elbow_torque = RewTerm(func=mdp.elbow_torque, weight=-0.001)
+    elbow_joint_velocity = RewTerm(func=mdp.elbow_joint_velocity, weight=-0.1)
     hip_roll_action = RewTerm(func=mdp.hip_roll_action, weight=-0.5)  # -1.0 -> -0.3
     hip_yaw_action = RewTerm(func=mdp.hip_yaw_action, weight=-0.5)  # -1.0 -> -0.3
     feet_y_distance = RewTerm(func=mdp.feet_y_distance, weight=-1.5)  # -2.0 -> -0.5
@@ -301,7 +321,7 @@ class DexRunFlatEnvCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=CommandRangesCfg(
-            lin_vel_x=(-0.6, 2.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.57, 1.57), heading=(-math.pi, math.pi)
+            lin_vel_x=(-0.2, 1.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.57, 1.57), heading=(-math.pi, math.pi)
         ),
     )
     noise: NoiseCfg = NoiseCfg(
@@ -420,8 +440,8 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
     seed = 42
     device = "cuda:0"
     num_steps_per_env = 24
-    max_iterations = 3000
-    empirical_normalization = False
+    max_iterations = 10000
+    empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCritic",
         init_noise_std=1.0,
@@ -438,13 +458,15 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.005,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-4,
+        learning_rate=2.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
-        normalize_advantage_per_mini_batch=False,
+        normalize_advantage_per_mini_batch=True,
+        entropy_coef_final=0.0005,
+        clip_param_final=0.05,
         symmetry_cfg = RslRlSymmetryCfg(
             use_data_augmentation=True,
             use_mirror_loss=True,
@@ -466,9 +488,9 @@ class DexRunAgentCfg(RslRlOnPolicyRunnerCfg):
     load_checkpoint = "model_.*.pt"
 
     # amp parameter
-    amp_reward_coef = 0.2 # 0.3->0.2
+    amp_reward_coef = 0.3 # 0.3->0.2
     amp_motion_files = ["legged_lab/envs/dex/datasets/motion_amp_expert/new_run.txt"]
     amp_num_preload_transitions = 200000
-    amp_task_reward_lerp = 0.8 # 0.7->0.8
+    amp_task_reward_lerp = 0.7 # 0.7->0.8
     amp_discr_hidden_dims = [1024, 512, 256]
     min_normalized_std = [0.05] * 23

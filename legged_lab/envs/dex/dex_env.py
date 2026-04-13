@@ -198,6 +198,10 @@ class DexEnv(VecEnv):
             name_keys=["ankle_pitch_l_joint", "ankle_pitch_r_joint", "ankle_roll_l_joint", "ankle_roll_r_joint"],
             preserve_order=True,
         )
+        self.elbow_joint_ids, _ = self.robot.find_joints(
+            name_keys=["elbow_pitch_l_joint", "elbow_pitch_r_joint"],
+            preserve_order=True,
+        )
         self.waist_joints_ids,_ = self.robot.find_joints(
             name_keys=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"],
             preserve_order=True,

@@ -45,17 +45,17 @@ DEX_V3_CFG = ArticulationCfg(
             "waist_yaw_joint": 0.0,    # waist_roll
             "waist_roll_joint": 0.0,   # waist_pitch
             "waist_pitch_joint": 0.0,     # waist_yaw
-            "shoulder_pitch_l_joint": 0.00, # l_shoulder_pitch
-            "shoulder_roll_l_joint": 0.10,  # l_shoulder_roll
+            "shoulder_pitch_l_joint": 0.0, # l_shoulder_pitch
+            "shoulder_roll_l_joint": 0.25,  # l_shoulder_roll
             "shoulder_yaw_l_joint": 0.0,   # l_shoulder_yaw
-            "elbow_pitch_l_joint": -0.50,   # l_elbow
+            "elbow_pitch_l_joint": -0.20,   # l_elbow
             # "elbow_yaw_l_joint": 0.0,      # l_wrist_yaw
             # "wrist_pitch_l_joint": 0.0,    # l_wrist_pitch
             # "wrist_roll_l_joint": 0.0,     # l_wrist_roll
-            "shoulder_pitch_r_joint": 0.00, # r_shoulder_pitch
-            "shoulder_roll_r_joint": -0.10, # r_shoulder_roll
+            "shoulder_pitch_r_joint": 0.0, # r_shoulder_pitch
+            "shoulder_roll_r_joint": -0.25, # r_shoulder_roll
             "shoulder_yaw_r_joint": 0.0,   # r_shoulder_yaw
-            "elbow_pitch_r_joint": -0.50,   # r_elbow
+            "elbow_pitch_r_joint": -0.20,   # r_elbow
             # "elbow_yaw_r_joint": 0.0,      # r_wrist_yaw
             # "wrist_pitch_r_joint": 0.0,    # r_wrist_pitch
             # "wrist_roll_r_joint": 0.0      # r_wrist_roll

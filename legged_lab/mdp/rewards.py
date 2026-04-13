@@ -218,6 +218,15 @@ def body_force(
     return reward
 
 
+def body_force_l2(
+    env: BaseEnv | DexEnv, sensor_cfg: SceneEntityCfg, threshold: float = 200
+) -> torch.Tensor:
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2].norm(dim=-1)
+    penalty = torch.square(torch.clamp(force, min=threshold))
+    return penalty
+
+
 def joint_deviation_l1(env: BaseEnv | DexEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
@@ -269,6 +278,16 @@ def feet_too_near_humanoid(
 def ankle_torque(env: DexEnv) -> torch.Tensor:
     """Penalize large torques on the ankle joints."""
     return torch.sum(torch.square(env.robot.data.applied_torque[:, env.ankle_joint_ids]), dim=1)
+
+
+def elbow_torque(env: DexEnv) -> torch.Tensor:
+    """Penalize large torques on the elbow joints."""
+    return torch.sum(torch.square(env.robot.data.applied_torque[:, env.elbow_joint_ids]), dim=1)
+
+
+def elbow_joint_velocity(env: DexEnv) -> torch.Tensor:
+    """Penalize high velocities on the elbow joints."""
+    return torch.sum(torch.abs(env.robot.data.joint_vel[:, env.elbow_joint_ids]), dim=1)
 
 
 def ankle_action(env: DexEnv) -> torch.Tensor:

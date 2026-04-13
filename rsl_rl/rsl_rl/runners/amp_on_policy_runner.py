@@ -315,6 +315,8 @@ class AmpOnPolicyRunner:
                     self.alg.compute_returns(privileged_obs)
 
             # update policy
+            progress = (it + 1) / tot_iter
+            self.alg.set_training_progress(progress)
             loss_dict = self.alg.update()
 
             stop = time.time()
